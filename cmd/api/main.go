@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"examflow/backend/internal/config"
 	"examflow/backend/internal/security"
 
 	"github.com/go-chi/chi/v5"
@@ -638,12 +639,22 @@ func (s *server) grade(w http.ResponseWriter, r *http.Request, teacherID string)
 	write(w, 200, map[string]bool{"ok": true})
 }
 func main() {
+	config.LoadEnv()
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
 		slog.Error("DATABASE_URL required")
 		os.Exit(1)
 	}
-	db, e := pgxpool.New(context.Background(), dbURL)
+	cfg, err := pgxpool.ParseConfig(dbURL)
+	if err != nil {
+		panic(err)
+	}
+	// When connecting through a transaction-mode connection pooler like Neon's PgBouncer,
+	// disable the client-side statement cache to avoid prepared statement collisions.
+	if strings.Contains(dbURL, "-pooler") {
+		cfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeExec
+	}
+	db, e := pgxpool.NewWithConfig(context.Background(), cfg)
 	if e != nil {
 		panic(e)
 	}

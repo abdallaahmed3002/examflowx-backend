@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"examflow/backend/internal/config"
 	"examflow/backend/migrations"
 	"github.com/jackc/pgx/v5"
 	"log"
@@ -10,9 +11,14 @@ import (
 )
 
 func main() {
-	url := os.Getenv("DATABASE_URL")
+	config.LoadEnv()
+	// Migrations require a direct, unpooled connection to Neon Postgres.
+	url := os.Getenv("DATABASE_URL_UNPOOLED")
 	if url == "" {
-		log.Fatal("DATABASE_URL required")
+		url = os.Getenv("DATABASE_URL")
+	}
+	if url == "" {
+		log.Fatal("DATABASE_URL or DATABASE_URL_UNPOOLED required")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()

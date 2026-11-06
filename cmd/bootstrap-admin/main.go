@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"examflow/backend/internal/config"
 	"github.com/jackc/pgx/v5"
 	"log"
 	"os"
@@ -10,10 +11,14 @@ import (
 )
 
 func main() {
+	config.LoadEnv()
 	email := strings.ToLower(strings.TrimSpace(os.Getenv("ADMIN_EMAIL")))
-	url := os.Getenv("DATABASE_URL")
+	url := os.Getenv("DATABASE_URL_UNPOOLED")
+	if url == "" {
+		url = os.Getenv("DATABASE_URL")
+	}
 	if email == "" || url == "" {
-		log.Fatal("ADMIN_EMAIL and DATABASE_URL required")
+		log.Fatal("ADMIN_EMAIL and DATABASE_URL (or DATABASE_URL_UNPOOLED) required")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
