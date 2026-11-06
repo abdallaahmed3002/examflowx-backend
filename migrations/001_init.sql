@@ -1,0 +1,11 @@
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE TABLE users (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),email text NOT NULL UNIQUE,password_hash text NOT NULL,full_name text NOT NULL,role text NOT NULL DEFAULT 'teacher' CHECK (role IN ('teacher','admin')),created_at timestamptz NOT NULL DEFAULT now());
+CREATE TABLE sessions (token_hash text PRIMARY KEY,user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,expires_at timestamptz NOT NULL);
+CREATE TABLE exams (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),teacher_id uuid NOT NULL REFERENCES users(id),public_token text NOT NULL UNIQUE,title text NOT NULL,subject text NOT NULL DEFAULT '',description text NOT NULL DEFAULT '',duration_minutes int NOT NULL DEFAULT 30 CHECK(duration_minutes BETWEEN 1 AND 480),passing_percent int NOT NULL DEFAULT 50 CHECK(passing_percent BETWEEN 0 AND 100),status text NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','published','closed')),created_at timestamptz NOT NULL DEFAULT now());
+CREATE INDEX exams_teacher ON exams(teacher_id,created_at DESC);
+CREATE TABLE questions (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),exam_id uuid NOT NULL REFERENCES exams(id) ON DELETE CASCADE,kind text NOT NULL CHECK(kind IN ('single','truefalse','essay')),prompt text NOT NULL,options jsonb NOT NULL DEFAULT '[]',correct_answer text NOT NULL DEFAULT '',points int NOT NULL DEFAULT 1 CHECK(points > 0),position int NOT NULL DEFAULT 0);
+CREATE INDEX questions_exam ON questions(exam_id,position);
+CREATE TABLE attempts (id uuid PRIMARY KEY DEFAULT gen_random_uuid(),attempt_token text NOT NULL UNIQUE,exam_id uuid NOT NULL REFERENCES exams(id),student_name text NOT NULL,started_at timestamptz NOT NULL DEFAULT now(),expires_at timestamptz NOT NULL,submitted_at timestamptz,score int, total int);
+CREATE INDEX attempts_exam ON attempts(exam_id,started_at DESC);
+CREATE INDEX attempts_expiry ON attempts(expires_at) WHERE submitted_at IS NULL;
+CREATE TABLE answers (attempt_id uuid NOT NULL REFERENCES attempts(id) ON DELETE CASCADE,question_id uuid NOT NULL REFERENCES questions(id),value text NOT NULL DEFAULT '',PRIMARY KEY(attempt_id,question_id));

@@ -1,0 +1,10 @@
+ALTER TABLE exams DROP CONSTRAINT exams_status_check;
+ALTER TABLE exams ADD CONSTRAINT exams_status_check CHECK(status IN ('draft','published','scheduled','closed','archived'));
+ALTER TABLE exams ADD COLUMN instructions text NOT NULL DEFAULT '';
+ALTER TABLE exams ADD COLUMN starts_at timestamptz;
+ALTER TABLE exams ADD COLUMN ends_at timestamptz;
+ALTER TABLE exams ADD COLUMN max_attempts int NOT NULL DEFAULT 1 CHECK(max_attempts BETWEEN 1 AND 20);
+ALTER TABLE exams ADD COLUMN updated_at timestamptz NOT NULL DEFAULT now();
+ALTER TABLE exams ADD CONSTRAINT exams_time_order CHECK(ends_at IS NULL OR starts_at IS NULL OR ends_at > starts_at);
+CREATE INDEX exams_availability ON exams(status,starts_at,ends_at);
+CREATE INDEX attempts_identity ON attempts(exam_id,lower(student_name));
