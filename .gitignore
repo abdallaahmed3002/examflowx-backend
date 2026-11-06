@@ -1,0 +1,22 @@
+# Binaries & builds
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Uploads
+uploads/*
+!uploads/.gitkeep
+
+# Environment variables
+.env
+.env*.local
+
+# System & IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
