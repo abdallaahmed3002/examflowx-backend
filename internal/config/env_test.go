@@ -40,3 +40,4 @@ func TestLoadEnv(t *testing.T) {
 		t.Errorf("expected 'examflow', got '%s'", os.Getenv("TEST_ENV_KEY_3"))
 	}
 }
+
