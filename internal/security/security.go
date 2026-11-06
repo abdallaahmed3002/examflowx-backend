@@ -5,26 +5,41 @@ import (
 	"encoding/hex"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
 )
 
-// OriginGuard rejects browser cross-site writes. A configured trusted Host must
-// be supplied by a reverse proxy; no CORS credentials are allowed.
+// OriginGuard rejects browser cross-site writes. It allows same-host, reverse proxies
+// (via X-Forwarded-Host or TRUSTED_ORIGIN), and Vercel frontends.
 func OriginGuard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
 		if origin != "" {
 			u, err := url.Parse(origin)
-			if err != nil || u.Scheme != "http" && u.Scheme != "https" || !strings.EqualFold(u.Host, r.Host) {
+			host := r.Header.Get("X-Forwarded-Host")
+			if host == "" {
+				host = r.Host
+			}
+			trustedOrigin := os.Getenv("TRUSTED_ORIGIN")
+			matched := strings.EqualFold(u.Host, host) ||
+				strings.EqualFold(u.Host, r.Host) ||
+				(trustedOrigin != "" && (strings.EqualFold(origin, trustedOrigin) || strings.EqualFold(u.Host, trustedOrigin))) ||
+				strings.HasSuffix(strings.ToLower(u.Host), ".vercel.app")
+
+			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || !matched {
 				http.Error(w, "Invalid origin", http.StatusForbidden)
 				return
 			}
 		}
 		if r.Method != "GET" && r.Method != "HEAD" && r.Method != "OPTIONS" && r.Header.Get("Sec-Fetch-Site") == "cross-site" {
-			http.Error(w, "Cross-site request blocked", http.StatusForbidden)
-			return
+			trustedOrigin := os.Getenv("TRUSTED_ORIGIN")
+			isVercel := strings.HasSuffix(strings.ToLower(r.Header.Get("Origin")), ".vercel.app")
+			if trustedOrigin == "" && !isVercel {
+				http.Error(w, "Cross-site request blocked", http.StatusForbidden)
+				return
+			}
 		}
 		next.ServeHTTP(w, r)
 	})
