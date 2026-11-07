@@ -34,7 +34,7 @@ func uploadDir() string {
 // magic bytes, and stores it under a random hex name — never the client name,
 // so path traversal and overwrite are impossible.
 func (s *server) uploadImage(w http.ResponseWriter, r *http.Request, teacherID string) {
-	if err := r.ParseMultipartForm(4 << 20); err != nil {
+	if err := r.ParseMultipartForm(16 << 20); err != nil {
 		fail(w, 400, "Multipart form with one 'image' file required")
 		return
 	}
@@ -44,8 +44,8 @@ func (s *server) uploadImage(w http.ResponseWriter, r *http.Request, teacherID s
 		return
 	}
 	fh := files[0]
-	if fh.Size > 2<<20 {
-		fail(w, 413, "Image must be 2MB or smaller")
+	if fh.Size > 10<<20 {
+		fail(w, 413, "Image must be 10MB or smaller")
 		return
 	}
 	f, err := fh.Open()
