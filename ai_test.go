@@ -117,3 +117,4 @@ func TestCleanAndNormalizeQuestions(t *testing.T) {
 		t.Errorf("expected points 2, got %d", qs[0].Points)
 	}
 }
+
