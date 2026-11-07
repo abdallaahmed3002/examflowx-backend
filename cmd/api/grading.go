@@ -81,7 +81,7 @@ func decodeOptions(raw json.RawMessage) ([]string, map[string]any, error) {
 	return nil, obj, nil
 }
 
-func validateAnswer(kind, value string, options json.RawMessage, correct string) error {
+func validateAnswer(kind, value string, options json.RawMessage) error {
 	if len(value) > answerLimit[kind] {
 		return fmt.Errorf("answer too long")
 	}

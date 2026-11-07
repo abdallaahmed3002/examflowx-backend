@@ -507,7 +507,7 @@ func (s *server) answer(w http.ResponseWriter, r *http.Request) {
 		write(w, 409, map[string]string{"error": "Question unavailable", "code": "question_missing"})
 		return
 	}
-	if verr := validateAnswer(kind, p.Value, opts, ""); verr != nil {
+	if verr := validateAnswer(kind, p.Value, opts); verr != nil {
 		write(w, 400, map[string]string{"error": "Invalid answer: " + verr.Error(), "code": "invalid_answer"})
 		return
 	}
@@ -736,6 +736,8 @@ func main() {
 	r.Post("/api/v1/exams/{id}/status/{action}", s.protected(s.changeStatus))
 	r.Post("/api/v1/exams/{id}/publish", s.protected(s.exam))
 	r.Post("/api/v1/exams/{id}/questions", s.protected(s.question))
+	r.Post("/api/v1/exams/{id}/questions/bulk", s.protected(s.bulkQuestions))
+	r.Post("/api/v1/ai/parse", s.protected(s.aiParseQuestions))
 	r.Put("/api/v1/exams/{id}/questions/order", s.protected(s.reorderQuestions))
 	r.Put("/api/v1/exams/{id}/questions/{questionID}", s.protected(s.editQuestion))
 	r.Delete("/api/v1/exams/{id}/questions/{questionID}", s.protected(s.editQuestion))

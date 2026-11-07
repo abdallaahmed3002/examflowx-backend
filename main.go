@@ -507,7 +507,7 @@ func (s *server) answer(w http.ResponseWriter, r *http.Request) {
 		write(w, 409, map[string]string{"error": "Question unavailable", "code": "question_missing"})
 		return
 	}
-	if verr := validateAnswer(kind, p.Value, opts, ""); verr != nil {
+	if verr := validateAnswer(kind, p.Value, opts); verr != nil {
 		write(w, 400, map[string]string{"error": "Invalid answer: " + verr.Error(), "code": "invalid_answer"})
 		return
 	}

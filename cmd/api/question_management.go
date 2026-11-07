@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -121,4 +122,79 @@ func (s *server) reorderQuestions(w http.ResponseWriter, r *http.Request, teache
 		return
 	}
 	write(w, 200, map[string]bool{"saved": true})
+}
+
+// bulkQuestions imports multiple questions in a single transaction.
+func (s *server) bulkQuestions(w http.ResponseWriter, r *http.Request, teacherID string) {
+	eid := chi.URLParam(r, "id")
+	var p struct {
+		Questions []questionInput `json:"questions"`
+	}
+	if decode(r, &p) != nil || len(p.Questions) == 0 {
+		fail(w, 400, "Questions array required")
+		return
+	}
+	if len(p.Questions) > 100 {
+		fail(w, 400, "Maximum 100 questions per bulk import")
+		return
+	}
+
+	tx, err := s.db.Begin(r.Context())
+	if err != nil {
+		fail(w, 500, "Database error")
+		return
+	}
+	defer tx.Rollback(r.Context())
+
+	var currentCount int
+	err = tx.QueryRow(r.Context(), `SELECT count(*) FROM questions WHERE exam_id=$1 AND EXISTS(SELECT 1 FROM exams WHERE id=$1 AND teacher_id=$2 AND status='draft')`, eid, teacherID).Scan(&currentCount)
+	if err != nil {
+		fail(w, 404, "Draft exam not found")
+		return
+	}
+
+	type validatedQ struct {
+		input   questionInput
+		correct string
+	}
+	validated := make([]validatedQ, len(p.Questions))
+	for i, q := range p.Questions {
+		if q.Points <= 0 {
+			q.Points = 1
+		}
+		if err := validateQuestionInput(q); err != nil {
+			fail(w, 400, fmt.Sprintf("Question %d: %s", i+1, err.Error()))
+			return
+		}
+		if !json.Valid(q.Options) {
+			fail(w, 400, fmt.Sprintf("Question %d: invalid options JSON", i+1))
+			return
+		}
+		correct, err := normalizeCorrect(q, q.Options)
+		if err != nil {
+			fail(w, 400, fmt.Sprintf("Question %d: invalid correct answer", i+1))
+			return
+		}
+		validated[i] = validatedQ{input: q, correct: correct}
+	}
+
+	inserted := 0
+	for i, vq := range validated {
+		pos := currentCount + i
+		_, err := tx.Exec(r.Context(),
+			`INSERT INTO questions(exam_id, kind, prompt, options, correct_answer, points, position, image_url) VALUES($1, $2, $3, $4, $5, $6, $7, $8)`,
+			eid, vq.input.Kind, vq.input.Prompt, vq.input.Options, vq.correct, vq.input.Points, pos, vq.input.ImageURL)
+		if err != nil {
+			fail(w, 500, "Failed to save questions")
+			return
+		}
+		inserted++
+	}
+
+	if err = tx.Commit(r.Context()); err != nil {
+		fail(w, 500, "Failed to commit questions")
+		return
+	}
+
+	write(w, 201, map[string]any{"count": inserted})
 }
