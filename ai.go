@@ -21,6 +21,7 @@ type aiParsePayload struct {
 	Images   []string `json:"images"`
 	APIKey   string   `json:"apiKey"`
 	Provider string   `json:"provider"` // "gemini", "openai", or ""
+	Model    string   `json:"model"`    // e.g. "gemini-3.8-flash"
 }
 
 type aiParseResultQuestion struct {
@@ -149,7 +150,7 @@ func (s *server) aiParseQuestions(w http.ResponseWriter, r *http.Request, teache
 		defer cancel()
 
 		if provider == "gemini" {
-			questions, err = parseWithGemini(ctx, apiKey, p.Text, p.Images)
+			questions, err = parseWithGemini(ctx, apiKey, p.Text, p.Model, p.Images)
 			source = "gemini"
 		} else {
 			questions, err = parseWithOpenAI(ctx, apiKey, p.Text, p.Images)
@@ -185,7 +186,7 @@ func (s *server) aiParseQuestions(w http.ResponseWriter, r *http.Request, teache
 }
 
 // Gemini Vision / Text Parser
-func parseWithGemini(ctx context.Context, apiKey, text string, images []string) ([]aiParseResultQuestion, error) {
+func parseWithGemini(ctx context.Context, apiKey, text, preferredModel string, images []string) ([]aiParseResultQuestion, error) {
 	type inlineData struct {
 		MimeType string `json:"mimeType"`
 		Data     string `json:"data"`
@@ -232,57 +233,98 @@ func parseWithGemini(ctx context.Context, apiKey, text string, images []string) 
 		return nil, err
 	}
 
-	// Try gemini-1.5-flash or gemini-2.0-flash
-	model := os.Getenv("GEMINI_MODEL")
-	if model == "" {
-		model = "gemini-1.5-flash"
+	// Prepare list of models to try, defaulting to gemini-3.8-flash
+	modelsToTry := []string{}
+	if preferredModel != "" {
+		modelsToTry = append(modelsToTry, preferredModel)
+	}
+	if envM := os.Getenv("GEMINI_MODEL"); envM != "" && envM != preferredModel {
+		modelsToTry = append(modelsToTry, envM)
+	}
+	for _, m := range []string{"gemini-3.8-flash", "gemini-2.5-flash", "gemini-1.5-flash"} {
+		already := false
+		for _, prev := range modelsToTry {
+			if prev == m {
+				already = true
+				break
+			}
+		}
+		if !already {
+			modelsToTry = append(modelsToTry, m)
+		}
 	}
 
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, apiKey)
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(reqBody))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("x-goog-api-key", apiKey)
+	var lastErr error
+	reSuggested := regexp.MustCompile(`models/(gemini-[a-zA-Z0-9._-]+)`)
 
-	client := &http.Client{Timeout: 45 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
+	for i := 0; i < len(modelsToTry); i++ {
+		model := modelsToTry[i]
+		url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, apiKey)
+		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(reqBody))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("x-goog-api-key", apiKey)
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
+		client := &http.Client{Timeout: 45 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			lastErr = fmt.Errorf("Gemini API error (%d): %s", resp.StatusCode, string(body))
+			// Auto-detect if Google error recommends a specific model (e.g., "Please update your code to use models/gemini-3.8-flash")
+			if m := reSuggested.FindStringSubmatch(string(body)); len(m) > 1 {
+				suggestedModel := m[1]
+				alreadyTried := false
+				for _, prev := range modelsToTry {
+					if prev == suggestedModel {
+						alreadyTried = true
+						break
+					}
+				}
+				if !alreadyTried {
+					modelsToTry = append(modelsToTry, suggestedModel)
+				}
+			}
+			continue
+		}
+
+		type geminiCandidate struct {
+			Content struct {
+				Parts []struct {
+					Text string `json:"text"`
+				} `json:"parts"`
+			} `json:"content"`
+		}
+		type geminiResp struct {
+			Candidates []geminiCandidate `json:"candidates"`
+		}
+
+		var gResp geminiResp
+		if err := json.Unmarshal(body, &gResp); err != nil {
+			lastErr = err
+			continue
+		}
+		if len(gResp.Candidates) == 0 || len(gResp.Candidates[0].Content.Parts) == 0 {
+			lastErr = fmt.Errorf("empty response from Gemini")
+			continue
+		}
+
+		responseText := gResp.Candidates[0].Content.Parts[0].Text
+		return cleanAndNormalizeQuestions(responseText)
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("Gemini API error (%d): %s", resp.StatusCode, string(body))
-	}
-
-	type geminiCandidate struct {
-		Content struct {
-			Parts []struct {
-				Text string `json:"text"`
-			} `json:"parts"`
-		} `json:"content"`
-	}
-	type geminiResp struct {
-		Candidates []geminiCandidate `json:"candidates"`
-	}
-
-	var gResp geminiResp
-	if err := json.Unmarshal(body, &gResp); err != nil {
-		return nil, err
-	}
-	if len(gResp.Candidates) == 0 || len(gResp.Candidates[0].Content.Parts) == 0 {
-		return nil, fmt.Errorf("empty response from Gemini")
-	}
-
-	responseText := gResp.Candidates[0].Content.Parts[0].Text
-	return cleanAndNormalizeQuestions(responseText)
+	return nil, lastErr
 }
 
 // OpenAI / OpenAI-compatible Vision / Text Parser
