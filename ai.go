@@ -132,10 +132,10 @@ func (s *server) aiParseQuestions(w http.ResponseWriter, r *http.Request, teache
 
 	// If no provider explicitly given, guess by API key format
 	if provider == "" && apiKey != "" {
-		if strings.HasPrefix(apiKey, "AIza") {
-			provider = "gemini"
-		} else {
+		if strings.HasPrefix(apiKey, "sk-") {
 			provider = "openai"
+		} else {
+			provider = "gemini"
 		}
 	}
 
