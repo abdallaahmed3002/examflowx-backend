@@ -403,19 +403,30 @@ func (s *server) classReport(w http.ResponseWriter, r *http.Request, teacherID s
 func (s *server) setExamClasses(w http.ResponseWriter, r *http.Request, teacherID string) {
 	eid := chi.URLParam(r, "id")
 	var p struct {
-		ClassIDs []string `json:"classIds"`
+		ClassIDs []any `json:"classIds"`
 	}
 	if decode(r, &p) != nil || len(p.ClassIDs) > 50 {
 		fail(w, 400, "Invalid class list")
 		return
 	}
+	cleanIDs := make([]string, 0, len(p.ClassIDs))
 	seen := map[string]bool{}
-	for _, id := range p.ClassIDs {
+	for _, raw := range p.ClassIDs {
+		var id string
+		switch v := raw.(type) {
+		case string:
+			id = v
+		case map[string]any:
+			if str, ok := v["id"].(string); ok {
+				id = str
+			}
+		}
 		if id == "" || seen[id] {
-			fail(w, 400, "Duplicate class id")
+			fail(w, 400, "Duplicate or invalid class id")
 			return
 		}
 		seen[id] = true
+		cleanIDs = append(cleanIDs, id)
 	}
 	tx, err := s.db.Begin(r.Context())
 	if err != nil {
@@ -436,7 +447,7 @@ func (s *server) setExamClasses(w http.ResponseWriter, r *http.Request, teacherI
 		fail(w, 500, "Database error")
 		return
 	}
-	for _, id := range p.ClassIDs {
+	for _, id := range cleanIDs {
 		tag, err := tx.Exec(r.Context(), `INSERT INTO exam_classes(exam_id,class_id) SELECT $1,c.id FROM classes c WHERE c.id=$2 AND c.teacher_id=$3 ON CONFLICT DO NOTHING`, eid, id, teacherID)
 		if err != nil || tag.RowsAffected() == 0 {
 			fail(w, 404, "Class not found")
