@@ -244,6 +244,7 @@ func parseWithGemini(ctx context.Context, apiKey, text string, images []string) 
 		return nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-goog-api-key", apiKey)
 
 	client := &http.Client{Timeout: 45 * time.Second}
 	resp, err := client.Do(req)
