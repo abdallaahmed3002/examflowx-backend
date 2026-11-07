@@ -99,8 +99,10 @@ Important Rules:
 // aiParseQuestions is the HTTP handler for POST /api/v1/ai/parse
 func (s *server) aiParseQuestions(w http.ResponseWriter, r *http.Request, teacherID string) {
 	var p aiParsePayload
-	if decode(r, &p) != nil {
-		fail(w, 400, "Invalid request body")
+	// Allow up to 25MB request body for base64 images
+	r.Body = http.MaxBytesReader(w, r.Body, 25<<20)
+	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
+		fail(w, 400, "Invalid request body or payload too large")
 		return
 	}
 
