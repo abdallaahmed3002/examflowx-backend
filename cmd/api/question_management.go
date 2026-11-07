@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -161,6 +162,13 @@ func (s *server) bulkQuestions(w http.ResponseWriter, r *http.Request, teacherID
 	for i, q := range p.Questions {
 		if q.Points <= 0 {
 			q.Points = 1
+		}
+		// If short question has no expected answer provided, convert to essay to prevent validation error
+		if q.Kind == "short" && strings.TrimSpace(q.CorrectAnswer) == "" {
+			q.Kind = "essay"
+		}
+		if q.Kind == "fill" && strings.TrimSpace(q.CorrectAnswer) == "" {
+			q.CorrectAnswer = "إجابة نموذجية"
 		}
 		if err := validateQuestionInput(q); err != nil {
 			fail(w, 400, fmt.Sprintf("Question %d: %s", i+1, err.Error()))

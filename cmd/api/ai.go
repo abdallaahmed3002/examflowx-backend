@@ -39,9 +39,9 @@ type aiParseResponse struct {
 	Count     int                     `json:"count"`
 }
 
-const aiPromptInstructions = `You are an expert exam parser and educational assessment specialist.
+const aiPromptInstructions = `You are an expert exam parser and master teacher across all academic subjects.
 Analyze the provided text and/or images (which may contain handwritten, typed, printed worksheets, notes, or test questions in Arabic or English).
-Extract every question into a structured JSON array.
+Extract every question into a structured JSON array, AND SOLVE EVERY QUESTION TO PROVIDE THE ACCURATE CORRECT ANSWER.
 
 Return a JSON object with this exact shape:
 {
@@ -67,18 +67,18 @@ Rules for Question Kinds and Formats:
 3. "truefalse": True or False question.
    - "options": [].
    - "correctAnswer": Exactly "True" or "False".
-4. "short": Short answer / recall question.
+4. "short": Short answer / recall question (علل / ما المقصود / اذكر / ما سبب).
    - "options": [].
-   - "correctAnswer": Model answer string.
+   - "correctAnswer": Clear and concise model answer string (1-2 sentences). NEVER leave empty!
 5. "fill": Fill in the blank question.
    - "options": [].
-   - "correctAnswer": Expected word(s), or alternatives separated by | (e.g. "أكسجين|oxygen").
+   - "correctAnswer": Expected word(s), or alternatives separated by | (e.g. "أكسجين|oxygen"). NEVER leave empty!
 6. "numeric": Numeric calculation or math answer.
    - "options": [].
-   - "correctAnswer": A number as a string (e.g. "42" or "3.14").
-7. "essay": Long answer or explanation question.
+   - "correctAnswer": Calculated numerical value as a string (e.g. "42" or "3.14"). NEVER leave empty!
+7. "essay": Long answer or explanation question (اشرح / وضح بالتفصيل).
    - "options": [].
-   - "correctAnswer": Rubric / grading criteria or model answer (or empty).
+   - "correctAnswer": Model answer or grading criteria rubric.
 8. "ordering": Items to be arranged in a specific sequence.
    - "options": JSON array of 2 to 10 strings in their CORRECT final order.
    - "correctAnswer": Same JSON stringified array of strings in correct order.
@@ -90,8 +90,11 @@ Rules for Question Kinds and Formats:
    - "correctAnswer": Exact string of correct option.
    - "imageUrl": Image URL if applicable.
 
-Important Rules:
-- Detect the correct answer from markers like an asterisk (*), checkmark (✓), bold, underline, circled letter, or an answer key section at the bottom. If no answer is marked, select the most likely correct answer based on educational knowledge, or default to the first option.
+MANDATORY RULES FOR ANSWERS:
+- YOU MUST ALWAYS PROVIDE A VALID, ACCURATE "correctAnswer" FOR EVERY QUESTION. NEVER RETURN EMPTY STRING FOR "correctAnswer" UNDER ANY CIRCUMSTANCES!
+- If the exam paper has marked answers (with *, ✓, bold, underline, circled letter, or an answer key section), transcribe that answer.
+- IF NO ANSWER IS MARKED ON THE PAPER: You MUST solve the question yourself using your expert knowledge and supply the accurate model answer!
+- For open-ended questions without a fixed exact answer, provide a comprehensive model answer or classify as "essay".
 - Strip question numbering (like "1.", "س1:", "Q2-") from the prompt text so it is clean.
 - Ensure all text retains original Arabic or English wording and mathematical symbols.
 - If images were provided, transcribe the questions and choices accurately.
